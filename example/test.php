@@ -16,8 +16,9 @@ $socket->on('connection', function (React\Socket\ConnectionInterface $proxyConne
         // 'tcp' => new Clue\React\HttpProxy\ProxyConnector('192.168.43.1:8234'), //可以做个跳板(http proxy)
         // 'tcp' => new Clue\React\Socks\Client('192.168.43.1:8235'), // 可以做个跳板(socket proxy),
         // 'tcp' => new Clue\React\SshProxy\SshProcessConnector('user@ip'), //可以做个跳板(ssh proxy)
-        'tcp' => new Wpjscc\React\SshProxy\ProxyConnector('root@10.8.0.1'), //可以做个跳板(ssh proxy)
-        // 'dns' => false,
+        'tcp' => new Wpjscc\React\SshProxy\ProxyConnector('root@10.8.0.1', '/root/.ssh/id_rsa.pub', '/root/.ssh/id_rsa'), //可以做个跳板(ssh proxy)
+        'dns' => false,
+
     )))
     ->connect("tcp://".getParam("--dest-host").":".getParam("--dest-port"))
     ->then(function (React\Socket\ConnectionInterface $connection) use ($proxyConnection, $fn, &$buffer)  {

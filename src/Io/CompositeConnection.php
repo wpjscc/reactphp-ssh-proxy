@@ -6,66 +6,72 @@ use Evenement\EventEmitter;
 use React\Socket\ConnectionInterface;
 use React\Stream\ReadableStreamInterface;
 use React\Stream\WritableStreamInterface;
+use React\Stream\DuplexStreamInterface;
 use React\Stream\Util;
 
 /** @internal */
-class CompositeConnection extends EventEmitter implements ConnectionInterface
+class CompositeConnection extends EventEmitter implements ConnectionInterface,DuplexStreamInterface
 {
 
-    private $read;
-    private $write;
+    private $readable;
+    private $writable;
     private $closed = false;
 
-    public function __construct(ReadableStreamInterface $read, WritableStreamInterface $write)
+    public function __construct(ReadableStreamInterface $readable, WritableStreamInterface $writable)
     {
-        $this->read = $read;
-        $this->write = $write;
+        $this->readable = $readable;
+        $this->writable = $writable;
 
-        if (!$read->isReadable() || !$write->isWritable()) {
+        if (!$readable->isReadable() || !$writable->isWritable()) {
             $this->close();
             return;
         }
 
-        Util::forwardEvents($read, $this, array('data', 'end', 'error'));
-        Util::forwardEvents($write, $this, array('error', 'drain'));
+        Util::forwardEvents($this->readable, $this, array('data', 'end', 'error'));
+        Util::forwardEvents($this->writable, $this, array('drain', 'error', 'pipe'));
 
-        $read->on('close', array($this, 'close'));
-        $write->on('close', array($this, 'close'));
-    }
-
-    public function write($data)
-    {
-        return $this->write->write($data);
-    }
-
-    public function end($data = null)
-    {
-        return $this->write->end($data);
+        $this->readable->on('close', array($this, 'close'));
+        $this->writable->on('close', array($this, 'close'));
     }
 
     public function isReadable()
     {
-        return $this->read->isReadable();
-    }
-
-    public function isWritable()
-    {
-        return $this->write->isWritable();
+        return $this->readable->isReadable();
     }
 
     public function pause()
     {
-        $this->read->pause();
+        $this->readable->pause();
     }
 
     public function resume()
     {
-        $this->read->resume();
+        if (!$this->writable->isWritable()) {
+            return;
+        }
+
+        $this->readable->resume();
     }
 
     public function pipe(WritableStreamInterface $dest, array $options = array())
     {
         return Util::pipe($this, $dest, $options);
+    }
+
+    public function isWritable()
+    {
+        return $this->writable->isWritable();
+    }
+
+    public function write($data)
+    {
+        return $this->writable->write($data);
+    }
+
+    public function end($data = null)
+    {
+        $this->readable->pause();
+        $this->writable->end($data);
     }
 
     public function close()
@@ -74,10 +80,9 @@ class CompositeConnection extends EventEmitter implements ConnectionInterface
             return;
         }
 
-        $this->remote = null;
         $this->closed = true;
-        $this->read->close();
-        $this->write->close();
+        $this->readable->close();
+        $this->writable->close();
 
         $this->emit('close');
         $this->removeAllListeners();

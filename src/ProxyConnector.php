@@ -13,17 +13,19 @@ class ProxyConnector implements ConnectorInterface
     protected $ip;
     protected $port;
 
-    protected $indentityFilePath;
+    protected $publicPath;
+    protected $privatePath;
+
+
+    
 
     protected $loop;
 
     public function __construct(
         #[\SensitiveParameter]
         $uri,
-        $indentityFilePath = [
-            'private' => '~/.ssh/id_rsa',
-            'public' => '~/.ssh/id_rsa.pub'
-        ],
+        $publicPath = '~/.ssh/id_rsa.pub',
+        $privatePath = '~/.ssh/id_rsa',
         LoopInterface $loop = null
     ) {
         // URI must use optional ssh:// scheme, must contain host and neither pass nor target must start with dash
@@ -56,10 +58,11 @@ class ProxyConnector implements ConnectorInterface
             $this->port = 22;
         }
 
-        $this->indentityFilePath = $indentityFilePath;
+        $this->publicPath = $publicPath ?: '~/.ssh/id_rsa.pub';
+        $this->privatePath = $privatePath ?: '~/.ssh/id_rsa';
         
         $this->loop = $loop ?: \React\EventLoop\Loop::get();
-        var_dump($this->indentityFilePath, $this->user, $this->ip, $this->port);
+
 
     }
 
@@ -79,20 +82,25 @@ class ProxyConnector implements ConnectorInterface
             ));
         });
 
-
         try {
 
             $host = $parts['host'];
             $port = $parts['port'];
 
             $connection = ssh2_connect($this->ip, $this->port);
-            ssh2_auth_pubkey_file($connection, $this->user, $this->indentityFilePath['public'], $this->indentityFilePath['private']);
+
+            if (!$connection) {
+                throw new \RuntimeException('Unable to connect to SSH server');
+            }
+
+            ssh2_auth_pubkey_file($connection, $this->user, $this->publicPath, $this->privatePath);
             $tunnel = ssh2_tunnel($connection, $host, $port);
             stream_set_blocking($tunnel, false);
             $stream = new Io\CompositeConnection(
                 new \React\Stream\ReadableResourceStream($tunnel),
                 new \React\Stream\WritableResourceStream($tunnel)
             );
+
 
             $deferred->resolve($stream);
 
